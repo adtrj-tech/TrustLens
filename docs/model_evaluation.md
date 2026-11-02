@@ -123,3 +123,89 @@ Next experiments:
 2. Compare models using the same validation split and metrics
 3. Review threshold behavior and false positives/false negatives
 4. Evaluate the selected model on an independent test set before making final performance claims
+
+## Error Analysis — Class-Weighted Logistic Regression
+
+The class-weighted One-vs-Rest Logistic Regression model was evaluated using per-label thresholds selected from validation precision-recall curves.
+
+### Error-rate findings
+
+| Label         | False Positive Rate | False Negative Rate |
+| ------------- | ------------------: | ------------------: |
+| Toxic         |               2.61% |              20.86% |
+| Severe Toxic  |               0.76% |              38.87% |
+| Obscene       |               0.91% |              20.36% |
+| Identity Hate |               0.54% |              51.96% |
+
+The model produced relatively low false-positive rates for the reported labels, but false-negative rates were considerably higher. Identity Hate was particularly challenging, with approximately half of positive validation examples missed at the selected threshold. Severe Toxic also showed a substantial false-negative rate.
+
+### Qualitative error analysis
+
+Inspection of threat-label errors revealed two potential issues:
+
+1. **Possible annotation inconsistencies:** Several comments containing explicit threats were labeled as non-threats in the validation data. These examples may represent annotation disagreements or inconsistencies in the dataset's threat-label definition.
+2. **Context and phrasing limitations:** The model missed some threats expressed indirectly, through unusual wording, implied violence, or references requiring conversational context.
+
+These observations are based on a small manually inspected sample and should not be interpreted as an estimate of the dataset-wide annotation-error rate.
+
+### Limitations and intended use
+
+The model relies on TF-IDF text features and does not explicitly understand conversational context, intent, or the target of a statement. Its predictions should therefore be treated as moderation signals rather than definitive judgments.
+
+For TrustLens, uncertain or context-dependent cases should be routed for human review. Automatic enforcement based solely on this baseline model would be inappropriate.
+
+### Evaluation caveat
+
+Thresholds were selected using the same validation set on which the reported tuned metrics were calculated. The results may therefore be optimistic. A separate untouched test set should be used for final evaluation after model and threshold selection.
+
+## Official Jigsaw Test Set Evaluation
+
+### Evaluation protocol
+
+The selected class-weighted One-vs-Rest Logistic Regression model was evaluated on the official Jigsaw test set.
+
+* Test comments: 153,164
+* Labels: toxic, severe_toxic, obscene, threat, insult, identity_hate
+* Scored samples per label: 63,978
+* Unscored labels (`-1`): excluded separately for each label
+* TF-IDF vectorizer: fitted on training data only
+* Classification thresholds: tuned on validation data and frozen before test evaluation
+
+### Per-label results
+
+| Label         | Precision | Recall |     F1 |
+| ------------- | --------: | -----: | -----: |
+| Toxic         |    0.5305 | 0.8123 | 0.6418 |
+| Severe toxic  |    0.2712 | 0.6022 | 0.3739 |
+| Obscene       |    0.6265 | 0.7559 | 0.6852 |
+| Threat        |    0.4264 | 0.5355 | 0.4748 |
+| Insult        |    0.5972 | 0.6822 | 0.6369 |
+| Identity hate |    0.5069 | 0.5702 | 0.5367 |
+
+### Aggregate results
+
+| Metric   |  Score |
+| -------- | -----: |
+| Micro F1 | 0.6348 |
+| Macro F1 | 0.5582 |
+
+### Interpretation
+
+The model performed best on the obscene label (F1: 0.6852). Toxic detection achieved relatively high recall (0.8123), but precision was lower (0.5305), indicating a substantial number of false-positive predictions.
+
+Severe-toxic detection was the weakest category (F1: 0.3739). Threat and identity-hate detection also remain challenging.
+
+Validation performance was higher than official test performance:
+
+| Metric   | Validation | Official test |
+| -------- | ---------: | ------------: |
+| Micro F1 |     0.7420 |        0.6348 |
+| Macro F1 |     0.6210 |        0.5582 |
+
+This difference indicates that validation results were optimistic relative to the official test evaluation. The official test set was not used for threshold tuning.
+
+### Limitations and intended use
+
+The model uses word-level TF-IDF features and does not fully capture context, sarcasm, intent, or nuanced language. Dataset annotation inconsistencies may also affect measured performance.
+
+TrustLens should use these predictions as moderation-assistance signals. Uncertain or high-impact cases should be routed for human review rather than automatically deleted or penalized.
